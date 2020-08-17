@@ -6,6 +6,15 @@
  * - 코드 깔끔히 정리
  * - start 정리
  *
+ * ######## 해야할것 ########
+ * 1) issuer 구현
+ * 2) host의 데이터 -> Issuer 전달
+ * 3) Issuer가 host data를 서명 후  Issuer의 개인키로 암호화하여 host에게 전달
+ * 4) Issuer의 공용키 BlockChain에 저장
+ * 5) host는 암호화된 데이터 저장
+ *
+ * sessionStorage 내지는 첫 로그인 화면 개정 필요!
+ * 회원탈티 구현 필요
  *
  * ######## 주의사항 ########
  * - 올리기 전에 불필요한 console.log() 지워주세요.
@@ -13,6 +22,9 @@
 
 import Caver from "caver-js";
 import {Spinner} from "spin.js";
+import RSA from "./rsa";
+import AESCrypt from "./aes";
+import crypto from "crypto";
 
 
 const config = {
@@ -48,14 +60,17 @@ const App = {
         cav.klay.accounts.wallet.add(JSON.parse(walletFromSession)); // cav-wallet에 해당 계정 정보를 다시 넣음
         this.auth.address = JSON.parse(walletFromSession).address;
 
-        // 2. Session에 들어온 후 해당 계정의 Host Data 불러오기
-        const MyInfo = await this.checkValidHost(this.auth.address);
+        await this.changeUI(JSON.parse(walletFromSession));
 
-        if(MyInfo){ // host정보가 입력되어 있는 경우
-          await this.changeUI_Hostdata_has();
-        } else { // host정보가 입력되어 있지 않은 경우
-          await this.changeUI_Hostdata_none();
-        }
+
+        // // 2. Session에 들어온 후 해당 계정의 Host Data 불러오기
+        // const MyInfo = await this.checkValidHost(this.auth.address);
+        //
+        // if(MyInfo){ // host정보가 입력되어 있는 경우
+        //   await this.changeUI_Hostdata_has();
+        // } else { // host정보가 입력되어 있지 않은 경우
+        //   await this.changeUI_Hostdata_none();
+        // }
 
       } catch (e) { // 유효한 계정 정보가 아닌경우
         sessionStorage.removeItem('walletInstance'); // session에서 정보 지움
@@ -63,6 +78,175 @@ const App = {
     } 
   },
 
+
+  /**
+   *
+   * @returns {{id_number: string, phone: string, name: string}}
+   */
+  getHostCode: function () {
+    return {
+      host: this.host
+    };
+  },
+
+  /**
+   * Issuer의 private 키 입력받기
+   * 1) 키스토어 입력 TODO
+   * 2) private key 입력
+   *
+   * 일단은 private key 입력으로
+   * @returns {Promise<void>}
+   */
+  inputIssuerPrivateKey: async function () {
+    const privateKey = document.getElementById("issuerPrivateKey");
+    this.auth.accessType = 'privatekey';
+    this.auth.keystore = privateKey; //이거 안될것같음
+    $('#issuerPrivateKeyModal').modal('hide');
+    $('#button_IssuerPrivateKey').hide();
+    $('#button_IssuerKeystore').hide();
+    $('#button_host_data_export').show();
+  },
+
+  inputIssuerKeystore: function () {
+    try{ //caver instance 활용
+      //키스토어와 비밀번호로 비밀키(privateKey)를 가져옴
+      const privateKey = cav.klay.accounts.decrypt(this.auth.keystore, this.auth.password).privateKey;
+      this.auth.accessType = 'keystore';
+      this.auth.keystore = privateKey;
+      $('#IssuerKeystoreModal').modal('hide');
+      $('#button_IssuerPrivateKey').hide();
+      $('#button_IssuerKeystore').hide();
+      $('#button_host_data_export').show();
+    } catch (e) {
+      console.log(e);
+      $('#message').text('비밀번호가 일치하지 않습니다.');
+    }
+  },
+
+  strToarray: function (str) {
+    const buf = new ArrayBuffer(32); // 2 bytes for each char
+    const bufView = new Uint8Array(buf);
+    let i = 0, strLen = str.length;
+    for (; i < strLen; i++) {
+      bufView[i] = str.charCodeAt(i);
+    }
+    return buf;
+  },
+
+  /**
+   * << 컨트랙트 >>
+   * Host data를 폼에 맞게 입력
+   * 암호화 필요
+   * @returns {Promise<void>}
+   */
+  inputHostData: async function () {
+    // html에서 입력받은 값 host에 저장함
+    this.host.name = document.getElementById("host_name").value;
+    this.host.id_number = document.getElementById("host_id_front").value + "-" + document.getElementById("host_id_rear").value;
+    this.host.phone = document.getElementById("host_phone").value;
+
+    const hostCode = this.getHostCode();
+    console.log(hostCode);
+
+
+    // let key = crypto.randomBytes(32);
+    const key = crypto.createHash('sha256').update(this.auth.keystore).digest();
+    console.log("key: "+key);
+
+    // AES 암호화
+    const AESCipher = AESCrypt.encrypt(key, hostCode.toString());
+    console.log("AESCipher: " + AESCipher);
+
+    // AES key를 RSA로 암호화
+    const RSACipher = RSA.encrypt(key);
+    console.log("RSACipher: "+RSACipher);
+
+    // RSA 복호화 => key
+    const RSADecipher = RSA.decrypt(RSACipher);
+    console.log("RSADecipher: "+RSADecipher);
+
+    console.log("this.strToarray(RSADecipher): "+this.strToarray(RSADecipher));
+
+    // 복호화된 key로 AES복호화 - 오류발생
+    const AESDecipher = AESCrypt.decrypt(AESCipher, RSADecipher);
+    console.log(AESDecipher);
+
+    const decrypt = AESCrypt.decrypt(AESCipher, key)
+    console.log(decrypt);
+
+
+
+    /* host data block에 올리는 부분 - 블록에 호스트 데이터 올라가지 않도록 변경해야함! */ //TODO!
+    // const walletInstance = this.getWallet(); // 로그인된 계정 정보 확인
+    // 추가부분
+    // if(walletInstance) { // 계정 정보 존재하는지 확인
+    //   if(this.host) {// 정확히 구현필요
+    //     agContract.methods.setHost(walletInstance.address, this.host.name, this.host.id_number, this.host.phone).send({
+    //       from: walletInstance.address,
+    //       gas: '250000',   //send 함수 수정했음
+    //       value: 0
+    //     })
+    //         .once('transactionHash', (txHash) => { // transaction hash로 return 받는 경우
+    //           console.log(`txHash: ${txHash}`);
+    //         })
+    //         .once('receipt', (receipt) => { // receipt(영수증)으로 return받는 경우
+    //           console.log(`(#${receipt.blockNumber})`, receipt); // 어느 블록에 추가되었는지 확인할 수 있음
+    //           spinner.stop(); // loading ui 종료
+    //           alert(JSON.stringify(this.host) + "로 컨트랙에 저장했습니다."); // 입력된 host 정보
+    //           location.reload();
+    //         })
+    //         .once('error', (error) => { // error가 발생한 경우
+    //           alert(error.message);
+    //         });
+    //   } return; // host 정보 없으면 종료
+    // }
+  },
+
+
+  /**
+   * << UI >>
+   * hostdata 있는 경우
+   * login창 없애고
+   * 로그인 버튼없애고 로그아웃 버튼으로
+   * 호스트 정보 입력창 없애고 호스트 정보 출력
+   * 호스트 정보 초기화 버튼 출력
+   *
+   * 추후 필요 정보 업데이트 요망
+   */
+  changeUI_Hostdata_has: async function () {
+    $('#loginModal').modal('hide');
+    $('#login').hide();
+    $('#logout').show();
+    $('#host_input').hide();
+
+    // $('#host_data').show();
+    // $('#host_session_out').show();
+    // $('#host_data').append('<br>' + '<p>' + '이름: ' + this.host.name + '</p>' + '<br>'
+    //     + '<p>' + '주민등록번호: ' + this.host.id_number + '</p>' + '<br>'
+    //     + '<p>' + '전화번호: ' + this.host.phone + '</p>' + '<br>');
+  },
+
+
+  /**
+   * << UI >>
+   * hostdata 없는 경우
+   * 로그인부분 없애고 로그아웃 버튼으로
+   * 호스트 정보 입력창 출력
+   */
+  changeUI: async function (walletInstance) {
+    $('#loginModal').modal('hide');
+    $('#login').hide();
+    $('#logout').show();
+
+    // issuer가 접속한 경우에만 호스트 데이터 입력할 수 있도록
+    if ( await this.callOwner() === cav.utils.toChecksumAddress(walletInstance.address)) { // 주소 대소문자 trouble
+      $('#issuer_page').show();
+      $('#host_input').show();
+    }
+    $('#host_session_out').hide(); //TODO! 회원탈퇴 상황 확인
+    $('#address').append('<br>' + '<p>' + '내 계정주소: ' + this.auth.address + '</p>');
+
+  },
 
 
 
@@ -74,85 +258,11 @@ const App = {
 // ####### Functions - Can't control #######
 // 확인 필요한 코드 - 확인 요청 한 후에 아래로 내릴 것
 
-  /**
-   * << 컨트랙트 >>
-   * Host data를 폼에 맞게 입력하면, 해당 데이터를 contract로 블록에 저장
-   * 암호화 필요
-   * @returns {Promise<void>}
-   */
-  inputHostData: async function () {
-    var spinner = this.showSpinner();
 
-    // html에서 입력받은 값 host에 저장함
-    this.host.name = document.getElementById("host_name").value;
-    this.host.id_number = document.getElementById("host_id_front").value + "-" + document.getElementById("host_id_rear").value;
-    this.host.phone = document.getElementById("host_phone").value;
 
-    const walletInstance = this.getWallet(); // 로그인된 계정 정보 확인
-    // 추가부분
-    if(walletInstance) { // 계정 정보 존재하는지 확인
-      if(this.host) {// 정확히 구현필요
-        agContract.methods.setHost(walletInstance.address, this.host.name, this.host.id_number, this.host.phone).send({
-          from: walletInstance.address,
-          gas: '250000',   //send 함수 수정했음
-          value: 0
-        })
-            .once('transactionHash', (txHash) => { // transaction hash로 return 받는 경우
-              console.log(`txHash: ${txHash}`);
-            })
-            .once('receipt', (receipt) => { // receipt(영수증)으로 return받는 경우
-              console.log(`(#${receipt.blockNumber})`, receipt); // 어느 블록에 추가되었는지 확인할 수 있음
-              spinner.stop(); // loading ui 종료
-              alert(JSON.stringify(this.host) + "로 컨트랙에 저장했습니다."); // 입력된 host 정보
-              location.reload();
-              // this.changeUI_Hostdata_has();  //TODO : 확인필요
-            })
-            .once('error', (error) => { // error가 발생한 경우
-              alert(error.message);
-            });
-      } return; // host 정보 없으면 종료
-    }
-  },
 
-  /**
-   * << UI >>
-   * hostdata 있는 경우
-   * login창 없애고
-   * 로그인 버튼없애고 로그아웃 버튼으로
-   * 호스트 정보 입력창 없애고 호스트 정보 출력
-   * 호스트 정보 초기화 버튼 출력
-   * 
-   * 추후 필요 정보 업데이트 요망
-   */
-  changeUI_Hostdata_has: async function () {
-    $('#loginModal').modal('hide');
-    $('#login').hide();
-    $('#logout').show();
-    $('#host_input').hide();
-  
-    $('#host_data').show();
-    $('#host_session_out').show();
-    $('#host_data').append('<br>' + '<p>' + '이름: ' + this.host.name + '</p>' + '<br>'
-                          + '<p>' + '주민등록번호: ' + this.host.id_number + '</p>' + '<br>'
-                          + '<p>' + '전화번호: ' + this.host.phone + '</p>' + '<br>');
-  },
 
-  /**
-   * << UI >>
-   * hostdata 없는 경우
-   * 로그인부분 없애고 로그아웃 버튼으로
-   * 호스트 정보 입력창 출력
-   */
-  changeUI_Hostdata_none: async function () {
-    $('#loginModal').modal('hide');
-    $('#login').hide();
-    $('#logout').show();
-    
-    $('#host_input').show();
-    $('#host_data').hide();
-    $('#host_session_out').hide();
-    $('#address').append('<br>' + '<p>' + '내 계정주소: ' + this.auth.address + '</p>');
-  },
+
 
   /**
    *  << 컨트랙트 >>
@@ -265,8 +375,7 @@ const App = {
       try{ //caver instance 활용
         //키스토어와 비밀번호로 비밀키(privateKey)를 가져옴
         
-        // const privateKey = cav.klay.accounts.decrypt(this.auth.keystore, this.auth.password);
-        console.log("개인키 확인");
+        const privateKey = cav.klay.accounts.decrypt(this.auth.keystore, this.auth.password).privateKey;
         this.integrateWallet(privateKey);
       } catch (e) {
         console.log(e);
@@ -342,7 +451,7 @@ const App = {
    */
   reset: function () {
     this.auth = {
-      kestore: '',
+      keystore: '',
       password: ''
     };
   },
@@ -379,6 +488,8 @@ const App = {
     var target = document.getElementById("spin");
     return new Spinner(opts).spin(target);
   },
+
+
 };
 
 window.App = App;

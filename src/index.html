@@ -20,6 +20,11 @@
 <div class="container">
   <div class="row">
     <div class="col-md-8 col-md-offset-2">
+      <div class="row text-center">
+        <div id="issuer_page"style="display: none;">
+          !!!관리자 계정입니다!!!
+        </div>
+      </div>
       <h1 class="text-center">모바일 신분증</h1>
       <h3 class="text-center">로그인화면</h3>
       <button type="button"
@@ -41,6 +46,8 @@
   </div>
 </div>
 
+
+
 <!--회원가입 진행-->
 <div class="container" id="host_input" style="display: none;">
   <form id=host_data_input>
@@ -48,8 +55,17 @@
     <p>주민등록번호: <input type="text" id="host_id_front" size="10" maxlength="6">
       -<input type="password" id="host_id_rear" size="10" maxlength="7"></p>
     <p>전화번호: <input type="tel" id="host_phone" size="20"></p>
-    <button type="button" class="btn btn-info pull-left" id="host_input_yes" onclick="App.inputHostData()">확인</button>
-    <!--inputHostData()로 Host data transaction !!!!ERROR-->
+    <button type="button" class="btn btn-info pull-left" id="button_host_data_export" style="display: none;" onclick="App.inputHostData()">호스트 데이터 내보내기</button>
+    <button type="button"
+            class="btn btn-info pull-left"
+            id="button_IssuerPrivateKey"
+            data-toggle="modal"
+            data-target="#issuerPrivateKeyModal">Issuer인증-개인키 입력하기</button>
+    <button type="button"
+            class="btn btn-info pull-left"
+            id="button_IssuerKeystore"
+            data-toggle="modal"
+            data-target="#IssuerKeystoreModal">Issuer인증-키스토어 입력하기</button>
   </form>
 </div>
 
@@ -60,6 +76,45 @@
 </div>
 
 <div id="spin"></div>
+
+<div class="modal fade" tabindex="-1" role="dialog" id="issuerPrivateKeyModal">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="issuer_page">이슈어의 개인키를 입력하세요.</label>
+          <input type="text" id="issuerPrivateKey">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-default" data-dismiss="modal">닫기</button>
+        <button type="button" class="btn btn-primary" id="issuerPrivateKey_submit" onclick="App.inputIssuerPrivateKey()">제출</button>
+      </div>
+    </div><!-- /.modal-content -->
+  </div><!-- /.modal-dialog -->
+</div><!-- /.modal -->
+
+<div class="modal fade" tabindex="-1" role="dialog" id="IssuerKeystoreModal">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="keystore">Keystore</label>
+          <input type="file" id="issuerKeystore" onchange="App.handleImport()">
+        </div>
+        <div class="form-group">
+          <label for="input-password">비밀번호</label>
+          <input type="password" class="form-control" id="issuer_input-password" onchange="App.handlePassword()">
+          <p class="help-block" id="issuer_message"></p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-default" data-dismiss="modal">닫기</button>
+        <button type="button" class="btn btn-primary" id="issuer_submit" onclick="App.inputIssuerKeystore()">제출</button>
+      </div>
+    </div><!-- /.modal-content -->
+  </div><!-- /.modal-dialog -->
+</div><!-- /.modal -->
 
 <div class="modal fade" tabindex="-1" role="dialog" id="loginModal">
   <div class="modal-dialog modal-sm">
